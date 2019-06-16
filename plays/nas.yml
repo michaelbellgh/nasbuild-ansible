@@ -1,0 +1,603 @@
+---
+
+ - name: Build the NAS VM
+   gather_facts: false
+   hosts: esxi
+   connection: local
+
+   tasks:
+
+    - name: Load NAS variables
+      include_vars:
+        file: ../data/nas/vars/nas.yml
+        name: nas_vm
+
+       
+    - name: Get VM fact
+      vmware_vm_facts:
+        hostname: "{{ hostname }}"
+        username: "{{ username }}"
+        password: "{{ password }}"    
+      delegate_to: localhost
+      register: vmfacts
+    
+    - name: Shutdown any existing VM
+      vmware_guest:
+        hostname: "{{ hostname }}"
+        username: "{{ username }}"
+        password: "{{ password }}"
+        esxi_hostname: "{{ hostname }}"
+        name: "{{ nas_vm.vminfo.vm_id }}"
+        state: poweredoff
+      delegate_to: localhost
+      when: "nas_vm.vminfo.vm_id in vmfacts.virtual_machines and nas_vm.options.force_rebuild_vm and nas_vm.options.build_vm"
+        
+    - name: Delete any existing VMs
+      vmware_guest:
+        hostname: "{{ hostname }}"
+        username: "{{ username }}"
+        password: "{{ password }}"
+        folder: "{{ nas_vm.paths.target_folder }}"
+        datastore: "{{ nas_vm.paths.target_datastore }}"
+        esxi_hostname: "{{ hostname }}"
+        name: "{{ nas_vm.vminfo.vm_id }}"
+        state: absent
+      delegate_to: localhost
+      when: "nas_vm.vminfo.vm_id in vmfacts.virtual_machines and nas_vm.options.force_rebuild_vm and nas_vm.options.build_vm"
+
+    #As of ansible 2.7, no module to check if file exists on datastore. This step may fail if ISO in use
+    - name: Copy ISO
+      vsphere_copy:
+        host: "{{ hostname }}"
+        username: "{{ username }}"
+        password: "{{ password }}"
+        datacenter: ha-datacenter
+        datastore: "{{ nas_vm.paths.target_datastore }}"
+        path: "{{ nas_vm.paths.target_iso_filepath }}"
+        src: "{{ nas_vm.paths.src_iso }}"
+        validate_certs: no
+      when: "nas_vm.options.build_vm"
+    
+    #Creates the VM, with attached ISO, a new disk and staging port groups/VLAN. Waits for VM tools to init, and an IP address to be assigned   
+    - name: Create VM
+      vmware_guest:
+        hostname: "{{ hostname }}"
+        username: "{{ username }}"
+        password: "{{ password }}"
+        folder: "{{ nas_vm.paths.target_folder }}"
+        datastore: "{{ nas_vm.paths.target_datastore }}"
+        guest_id: "{{ nas_vm.vminfo.guest_id }}"
+        name: "{{ nas_vm.vminfo.vm_id }}"
+        state: poweredon
+        customization: 
+          dns_suffix: "{{ nas_vm.vminfo.dns_suffix }}"
+          domain: "{{ nas_vm.vminfo.domain }}"
+          hostname: "{{ nas_vm.vminfo.hostname }}"
+        cdrom:
+          type: iso
+          iso_path: "[{{ nas_vm.paths.target_datastore }}] {{ nas_vm.paths.target_iso_filepath }}"
+        disk:
+         - size_gb: "{{ nas_vm.vminfo.disk_size_gb }}"
+           type: thin
+           datastore: "{{ nas_vm.paths.target_datastore }}"
+        esxi_hostname: "{{ hostname }}"
+        hardware:
+
+           memory_mb: "{{ nas_vm.vminfo.memory_mb }}"
+           num_cpus: "{{ nas_vm.vminfo.num_cpus }}"
+           num_cpu_cores_per_socket: "{{ nas_vm.vminfo.cores_per_cpu }}"
+        networks: "{{ nas_vm.vminfo.staging_networks }}"
+
+        wait_for_ip_address: yes  
+      delegate_to: localhost
+      register: deploy_vm
+      when: "nas_vm.vminfo.vm_id not in vmfacts.virtual_machines and nas_vm.options.build_vm"
+      
+      
+      
+    #Waits until our VM has an IP address after reboot. Needed because previous step briefly registers IP then removes.  
+    - name: Get VM fact
+      vmware_vm_facts:
+        hostname: "{{ hostname }}"
+        username: "{{ username }}"
+        password: "{{ password }}"    
+      delegate_to: localhost
+      register: vmfacts_post 
+      until: "vmfacts_post.virtual_machines.{{ nas_vm.vminfo.vm_id }}.ip_address != ''"
+      retries: 30
+      delay: 60
+      
+    # Retrieves the IP using a filter on vmfacts_post.    
+    - name: Set IP Fact
+      set_fact:
+        staging_ip: "{{ vmfacts_post.virtual_machines | json_query(id + '.ip_address') }}"
+      vars:
+        id: "{{ nas_vm.vminfo.vm_id }}"
+        
+        
+     
+    - name: Add hosts  
+      add_host:
+        name: "{{ staging_ip }}"
+        ansible_ssh_user: "{{ nas_vm.creds.guest_user }}"
+        password: "{{ nas_vm.creds.guest_pass }}"
+        ansible_ssh_pass: "{{ nas_vm.creds.guest_pass }}"
+        ansible_become: yes
+        ansible_become_pass: "{{ nas_vm.creds.guest_pass }}"
+        ssh_pub_key: "{{ nas_vm.creds.ssh_pub_key }}"
+        guest_user: "{{ nas_vm.creds.guest_user }}"
+        guest_pass: "{{ nas_vm.creds.guest_pass }}"
+        groups: nas
+        
+ 
+ - name: Configuring nas
+   hosts: nas
+   gather_facts: false
+   tasks:    
+
+    - name: Load NAS variables
+      include_vars:
+        file: ../data/nas/vars/nas.yml
+        name: nas_vm  
+      
+    - name: Ignore host key on first run
+      set_fact:
+        ansible_ssh_extra_args: '-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no'
+        
+        
+    - name: Add local public key to remote server
+      authorized_key: 
+        key: "{{ ssh_pub_key }}"
+        user: "{{ guest_user }}"    
+        
+        
+   
+    - name: Copy all required pre install files
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        force: yes
+      become: yes
+      with_items:
+       - { src: "../data/nas/ssl/rootca.crt", dest: "/usr/local/share/ca-certificates/" }
+       - { src: "../data/nas/sources.list", dest: "/etc/apt/sources.list" }
+       - { src: "../data/nas/plex/plexmediaserver.list", dest: "/etc/apt/sources.list.d/plexmediaserver.list" }
+       - { src: "../data/nas/mono/mono-official-stable.list", dest: "/etc/apt/sources.list.d/mono-official-stable.list" }
+       - { src: "../data/nas/Ombi/ombi.list", dest: "/etc/apt/sources.list.d/ombi.list" }
+       - { src: "../data/nas/sonarr/sonarr.list", dest: "/etc/apt/sources.list.d/sonarr.list" }
+       - { src: "../data/nas/additional_hosts", dest: "/etc/additional_hosts" }
+
+    
+    
+
+        
+        
+    
+    - name: Run pre commands
+      command: "{{ item }}"
+      become: yes
+      with_items:
+       - "dpkg --configure -a"
+       - "update-ca-certificates"
+    
+    
+    
+    - name: Add all apt keys (shell)
+      shell: "{{ item }}"
+      become: yes
+      ignore_errors: yes
+      with_items:
+       - "curl https://downloads.plex.tv/plex-keys/PlexSign.key | apt-key add -"
+       - "wget -qO - https://repo.ombi.turd.me/pubkey.txt | sudo apt-key add -a"
+       
+    - name: Add apt keys (sonarr, mono)
+      apt_key:
+        keyserver: keyserver.ubuntu.com
+        id: "{{ item }}"
+      become: yes
+      with_items:
+       - "a236c58f409091a18aca53cbebff6b99d9b78493"
+       - "3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF"
+       
+    - name: Add PPA repos
+      apt_repository:
+        repo: ppa:transmissionbt/ppa
+        state: present
+      become: yes
+    
+    #Sets IPv4 preference for DNS, extended sockets for Transmission
+    - name: Set system settings
+      lineinfile:
+        path: "{{ item.path }}"
+        line: "{{ item.line }}"
+      become: yes
+      with_items:
+       - { path: "/etc/gai.conf", line: "precedence ::ffff:0:0/96  100" }
+       - { path: "/etc/sysctl.conf", line: "net.core.rmem_max = 4194304" }
+       - { path: "/etc/sysctl.conf", line: "net.core.wmem_max = 1048576" }
+          
+    - name: Set hostname
+      hostname:
+        name: "{{ nas_vm.vminfo.hostname }}"
+       
+    - name: add myself to /etc/hosts
+      lineinfile:
+        dest: /etc/hosts
+        regexp: '^127\.0\.0\.1[ \t]+localhost'
+        line: '127.0.0.1 localhost {{ nas_vm.vminfo.hostname }}'
+        state: present
+        
+    # Customise items with your own mountpoints
+    - name: Make storage drives mountpoints
+      file:
+        path: "{{ item }}"
+        state: directory
+      with_items:
+       - /mnt/Storage
+       - /mnt/NAS
+       
+    - name: Edit fstab (Need to uncomment after disks have been added manually)
+      lineinfile:
+        path: /etc/fstab
+        line: "{{ item }}"
+      with_items:
+       - "#/dev/sdb1 /mnt/Storage ext4 defaults 0 0"
+       - "#/dev/sdc1 /mnt/NAS ext4 defaults 0 0"      
+       
+    - name: Make service user group
+      group:
+        name: "{{ nas_vm.vminfo.service_user }}"
+        state: present
+        
+    - name: Make service_user user
+      user:
+        name: "{{ nas_vm.vminfo.service_user }}"
+        groups: "{{ nas_vm.vminfo.service_user }}"
+        state: present
+    
+
+            
+       
+    - name: Configure Sonarr
+      block:       
+       - stat:
+          path: "/home/{{ nas_vm.vminfo.service_user }}/.config/NzbDrone"
+         register: sonarr_config_exists
+       - file:
+           state: absent
+           path: "/home/{{ nas_vm.vminfo.service_user }}/.config/NzbDrone"
+         become: yes
+         when: not sonarr_config_exists.stat.exists
+       - copy:
+           src: ../data/nas/sonarr/NzbDrone
+           dest: "/home/{{ nas_vm.vminfo.service_user }}/.config/"
+           force: yes
+           owner: "{{ nas_vm.vminfo.service_user }}"
+           group: "{{ nas_vm.vminfo.service_user }}"
+         become: yes
+         when: not sonarr_config_exists.stat.exists
+         
+         
+    - name: Update base packages and upgrade
+      apt:
+        update_cache: yes
+        upgrade: yes
+        state: latest
+        cache_valid_time: 86400
+      ignore_errors: yes        
+      become: yes     
+
+     
+    - name: Install additional packages
+      apt:
+        update_cache: yes
+        name:
+        - unzip        
+        - transmission-cli
+        - transmission-common
+        - git-core
+        - ombi
+        - transmission-daemon
+        - plexmediaserver
+        - nzbdrone
+        - minidlna
+        - composer
+        - php
+        - php-zip
+        - sqlite
+        - php-mbstring
+        - php-xml
+        - php-common
+        - php-sqlite3
+        - python-lxml
+        - python-pip
+        - samba
+        - dnsmasq
+        - mono-complete
+        - libcurl4-openssl-dev
+        - apache2
+        - python-pip
+        - python3-pip
+        - libchromaprint-tools
+        state: present
+      become: yes
+      ignore_errors: yes
+      
+    - name: Stop transmission (holds lock on config)
+      systemd:
+        daemon_reload: yes
+        name: transmission-daemon
+        state: stopped
+      become: yes   
+      
+    - name: Upgrade pip, pyopenssl for python2
+      pip:
+        name:
+          - pip
+          - configparser
+          - lxml
+          - beautifulsoup4
+          - requests
+          
+    - name: Upgrade pip, pyopenssl for python3
+      pip:
+        name:
+          - pip
+          - configparser
+          - lxml
+          - beautifulsoup4
+          - requests
+        executable: "/usr/bin/pip3"
+        
+    - name: Download files
+      get_url:
+        url: "{{ item.url }}"
+        dest: "{{ item.dest }}"
+        tmp_dest: /tmp/
+        validate_certs: yes
+      become: yes
+      with_items:
+       - { url: "https://github.com/Jackett/Jackett/releases/download/v0.11.387/Jackett.Binaries.LinuxAMDx64.tar.gz", dest: "/tmp/Jackett.Binaries.LinuxAMDx64.tar.gz" }
+       - { url: "https://github.com/linuxserver/Heimdall/archive/2.1.13.zip", dest: "/tmp/heimdall.zip" }
+       - { url: "https://github.com/lidarr/Lidarr/releases/download/v0.5.0.583/Lidarr.develop.0.5.0.583.linux.tar.gz", dest: "/tmp/Lidarr.tar.gz" }
+      
+      
+    - name: Check if CouchPotato exists
+      stat:
+        path: /opt/CouchPotato
+      register: couchpotato_exists
+      
+    - name: Install CouchPotato
+      shell: "git clone https://github.com/CouchPotato/CouchPotatoServer.git /opt/CouchPotato"
+      become: yes
+      when: not couchpotato_exists.stat.exists
+      
+      
+    - name: Check if Jackett exists
+      stat:
+        path: /opt/Jackett
+      register: jackett_exists
+      
+    - name: Download jackett
+      get_url:
+        url: "https://github.com/Jackett/Jackett/releases/download/v0.11.327/Jackett.Binaries.LinuxAMDx64.tar.gz"
+        dest: /tmp/Jackett.Binaries.LinuxAMDx64.tar.gz
+      become: yes
+      when: not jackett_exists.stat.exists
+      
+    - name: Extract jackett
+      unarchive:
+        src: "/tmp/Jackett.Binaries.LinuxAMDx64.tar.gz"
+        dest: /opt/
+        remote_src: yes
+      become: yes
+      when: not jackett_exists.stat.exists
+        
+    - name: Install jackett service
+      command: "bash /opt/Jackett/install_service_systemd.sh"
+      become: yes
+      
+    - name: Reconfigure Jackett service
+      replace: 
+        path: /etc/systemd/system/jackett.service
+        regexp: "{{ item.regexp }}"
+        replace: "{{ item.replace }}"
+      become: yes
+      with_items:
+       - { regexp: "User=UNKNOWN", replace: "User={{ nas_vm.vminfo.service_user }}" }
+       - { regexp: "Group=UNKNOWN", replace: "Group={{ nas_vm.vminfo.service_user }}" }
+        
+
+    - name: Install heimdall requirements
+      composer:
+        command: require
+        global_command: yes
+        arguments: laravel/installer
+     
+    - name: Update composer components
+      composer:
+        command: update
+        global_command: yes      
+      
+    - name: Extract heimdall
+      unarchive:
+        src: /tmp/heimdall.zip
+        dest: /opt/
+        remote_src: yes
+        
+    - name: Rename heimdall folder
+      command: mv /opt/Heimdall-2.1.13 /opt/heimdall
+      args:
+        creates: /opt/heimdall
+        removes: /opt/Heimdall-2.1.13
+      become: yes        
+      
+      
+    - name: Unarchive Lidarr
+      unarchive:
+        src: "/tmp/Lidarr.tar.gz"
+        dest: "/opt/"
+        remote_src: yes
+      become: yes
+      
+    - name: Enable Apache2 modules
+      apache2_module:
+        state: present
+        name: "{{ item }}"
+      become: yes  
+      with_items:
+       - "headers"
+       - "rewrite"
+      
+      
+    - name: Copy systemd unit files
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        force: yes
+      become: yes
+      with_items:
+       - { src: "../data/nas/services/sonarr.service", dest: "/lib/systemd/system/sonarr.service" }
+       - { src: "../data/nas/services/ombi.service", dest: "/lib/systemd/system/ombi.service" }
+       - { src: "../data/nas/services/couchpotato.service", dest: "/etc/systemd/system/couchpotato.service" }
+       - { src: "../data/nas/services/transmission-daemon.service", dest: "/lib/systemd/system/transmission-daemon.service" }
+       - { src: "../data/nas/services/lidarr.service", dest: "/lib/systemd/system/lidarr.service" }
+            
+      
+    - name: Disable services
+      service:
+        name: "{{ item }}"
+        enabled: no
+      become: yes
+      with_items:
+       - "systemd-resolved"
+       
+    - name: Enable services
+      service:
+        name: "{{ item }}"
+        enabled: yes
+      become: yes
+      with_items:
+       - "sonarr.service"
+       - "transmission-daemon"
+       - "plexmediaserver"
+       - "apache2"
+       - "jackett"
+       - "couchpotato"
+       - "minidlna"
+       - "smbd"
+       - "lidarr"
+
+       
+    - name: Create post install folders
+      file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        mode: "{{ item.permissions }}"
+      become: yes
+      with_items:
+       - { path: "/home/{{ nas_vm.vminfo.service_user }}/.couchpotato", owner: "{{ nas_vm.vminfo.service_user }}", permissions: "0755" }
+
+      
+      
+    - name: Copy all post installation files
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        force: yes
+      become: yes
+      with_items:
+       - { src: "../data/nas/Ombi", dest: "/etc/" }
+       - { src: "../data/nas/resolv.conf", dest: "/etc/resolv.conf" }
+       - { src: "../data/nas/heimdall/database", dest: "/opt/heimdall/database" }
+       - { src: "../data/nas/apache2/apache2-config.conf", dest: "/etc/apache2/sites-enabled/000-default.conf" }
+       - { src: "../data/nas/heimdall/database", dest: "/opt/heimdall/database" }
+       - { src: "../data/nas/couchpotato/settings.conf", dest: "/home/{{ nas_vm.vminfo.service_user }}/.couchpotato/settings.conf" }
+       - { src: "../data/nas/dnsmasq.conf", dest: "/etc/dnsmasq.conf" }
+       - { src: "../data/nas/samba/smb.conf", dest: "/etc/samba/smb.conf" }
+       - { src: "../data/nas/transmission/settings.json", dest: "/etc/transmission-daemon/settings.json" }
+       - { src: "../data/nas/jackett/keypairs", dest: "/home/{{ nas_vm.vminfo.service_user }}/.config/.mono/" }
+       - { src: "../data/nas/jackett/Jackett", dest: "/home/{{ nas_vm.vminfo.service_user }}/.config/" }
+       - { src: "../data/nas/lidarr/Lidarr", dest: "/home/{{ nas_vm.vminfo.service_user }}/.config/" }
+       - { src: "../data/nas/100-static.yaml", dest: "/etc/netplan/100-static.yaml" }
+       
+       
+      
+      
+      
+    - name: Set all permissions
+      file:
+        path: "{{ item.path }}"
+        owner: "{{ item.owner }}"
+        state: "{{ item.state }}"
+        mode: "{{ item.mode }}"
+        recurse: "{{ item.recurse }}"
+        group: "{{ item.group }}"
+      become: yes
+      with_items:
+      
+       - { path: "/opt/Ombi", owner: "{{ nas_vm.vminfo.service_user }}", group: "{{ nas_vm.vminfo.service_user }}", state: "directory", mode: "0755", recurse: "yes" }
+       - { path: "/etc/Ombi", owner: "{{ nas_vm.vminfo.service_user }}", group: "{{ nas_vm.vminfo.service_user }}", state: "directory", mode: "0755", recurse: "yes" }
+       - { path: "/opt/NzbDrone", owner: "{{ nas_vm.vminfo.service_user }}", group: "{{ nas_vm.vminfo.service_user }}", state: "directory", mode: "0755", recurse: "yes" }
+       - { path: "/home/{{ nas_vm.vminfo.service_user }}/.config/NzbDrone/", owner: "{{ nas_vm.vminfo.service_user }}", group: "{{ nas_vm.vminfo.service_user }}", state: "directory", mode: "0755", recurse: "yes" }
+       - { path: "/home/{{ nas_vm.vminfo.service_user }}/.couchpotato", owner: "{{ nas_vm.vminfo.service_user }}", group: "{{ nas_vm.vminfo.service_user }}", state: "directory", mode: "0755", recurse: "yes" }
+       - { path: "/home/{{ nas_vm.vminfo.service_user }}/.composer", owner: "{{ nas_vm.vminfo.service_user }}", group: "{{ nas_vm.vminfo.service_user }}", state: "directory", mode: "0777", recurse: "yes" }
+       - { path: "/opt/heimdall/", owner: "www-data", group: "www-data", state: "directory", mode: "0777", recurse: "yes" }
+       - { path: "/etc/transmission-daemon/", owner: "{{ nas_vm.vminfo.service_user }}", group: "{{ nas_vm.vminfo.service_user }}", state: "directory", mode: "0755", recurse: "yes" }
+       - { path: "/home/{{ nas_vm.vminfo.service_user }}/.couchpotato/", owner: "{{ nas_vm.vminfo.service_user }}", group: "{{ nas_vm.vminfo.service_user }}", state: "directory", mode: "0755", recurse: "yes" }
+       - { path: "/etc/dnsmasq/", owner: "{{ nas_vm.vminfo.service_user }}", group: "root", state: "directory", mode: "0777", recurse: "yes" }
+       - { path: "/home/{{ nas_vm.vminfo.service_user }}/.config/.mono/keypairs", owner: "{{ nas_vm.vminfo.service_user }}", group: "{{ nas_vm.vminfo.service_user }}", state: "directory", mode: "0700", recurse: "yes" }
+       - { path: "/home/{{ nas_vm.vminfo.service_user }}/.config/Jackett", owner: "{{ nas_vm.vminfo.service_user }}", group: "{{ nas_vm.vminfo.service_user }}", state: "directory", mode: "0755", recurse: "yes" }
+       - { path: "/home/{{ nas_vm.vminfo.service_user }}/.config/Lidarr", owner: "{{ nas_vm.vminfo.service_user }}", group: "{{ nas_vm.vminfo.service_user }}", state: "directory", mode: "0755", recurse: "yes" }
+
+       
+       
+ #Reconfigure VM to use permanent NIC port groups and reboot. 
+ - name: ESX Cleanup
+   hosts: esxi
+   gather_facts: false
+   tasks:        
+   
+   
+   
+    - name: Shutdown VM
+      vmware_guest:
+        hostname: "{{ hostname }}"
+        username: "{{ username }}"
+        password: "{{ password }}"
+        folder: "{{ nas_vm.paths.target_folder }}"
+        datastore: "{{ nas_vm.paths.target_datastore }}"
+        guest_id: "{{ nas_vm.vminfo.guest_id }}"
+        name: "{{ nas_vm.vminfo.vm_id }}"
+        state: shutdownguest
+      delegate_to: localhost
+   
+    - name: Reconfigure NICs
+      vmware_guest:
+        hostname: "{{ hostname }}"
+        username: "{{ username }}"
+        password: "{{ password }}"
+        folder: "{{ nas_vm.paths.target_folder }}"
+        datastore: "{{ nas_vm.paths.target_datastore }}"
+        guest_id: "{{ nas_vm.vminfo.guest_id }}"
+        name: "{{ nas_vm.vminfo.vm_id }}"
+        networks: "{{ nas_vm.vminfo.networks }}"
+        wait_for_ip_address: yes  
+      delegate_to: localhost
+      register: postnicstate
+      
+    - name: Reboot and wait for new IP
+      vmware_guest:
+        hostname: "{{ hostname }}"
+        username: "{{ username }}"
+        password: "{{ password }}"
+        folder: "{{ nas_vm.paths.target_folder }}"
+        datastore: "{{ nas_vm.paths.target_datastore }}"
+        guest_id: "{{ nas_vm.vminfo.guest_id }}"
+        name: "{{ nas_vm.vminfo.vm_id }}"
+        state: poweredon
+        wait_for_ip_address: yes  
+      delegate_to: localhost
+      register: postnicstate
+     

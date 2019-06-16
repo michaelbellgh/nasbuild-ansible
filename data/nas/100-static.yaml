@@ -1,0 +1,19 @@
+network:
+  renderer: networkd
+  version: 2
+  ethernets:
+    ens192:
+      dhcp4: no
+      dhcp6: no
+      addresses: [192.168.1.50/24,]
+      nameservers:
+        search: [mynetwork.net]
+        addresses: [8.8.8.8, 1.1.1.1]      
+    ens224:
+      dhcp4: no
+      dhcp6: no
+      addresses: [192.168.2.50/24,]
+      gateway4: 192.168.2.254
+      nameservers:
+        search: [mynetwork.net]
+        addresses: [8.8.8.8, 1.1.1.1]
