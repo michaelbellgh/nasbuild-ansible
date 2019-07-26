@@ -66,10 +66,10 @@
         username: "{{ username }}"
         password: "{{ password }}"
         datacenter: ha-datacenter
-        datastore: "{{ nas_vm.paths.target_datastore }}"
-        path: "{{ nas_vm.paths.target_iso_filepath }}"
-        src: "{{ nas_vm.paths.src_iso }}"
-        validate_certs: "{{ nas_vm.options.validate_certs }}"  
+        datastore: "{{ vm_vars.paths.target_datastore }}"
+        path: "{{ vm_vars.paths.target_iso_filepath }}"
+        src: "{{ vm_vars.paths.src_iso }}"
+        validate_certs: "{{ vm_vars.options.validate_certs }}"  
       when: "vm_vars.options.copy_iso"
 
 
