@@ -1,0 +1,60 @@
+[
+  {
+    "id": "sitelink",
+    "type": "inputstring",
+    "name": "Site Link",
+    "value": "https://www.torrentfunk.com/"
+  },
+  {
+    "id": "cookieheader",
+    "type": "hiddendata",
+    "name": "CookieHeader",
+    "value": "__cfduid=d7d660ea18a4e16876cee98acc04d4f2f1558249812"
+  },
+  {
+    "id": "lasterror",
+    "type": "hiddendata",
+    "name": "LastError",
+    "value": ""
+  },
+  {
+    "id": "category",
+    "type": "inputselect",
+    "name": "Category",
+    "value": "all",
+    "options": {
+      "all": "All",
+      "movie": "Movies",
+      "music": "Music",
+      "television": "TV",
+      "game": "Games",
+      "software": "Software",
+      "anime": "Anime",
+      "ebook": "eBooks",
+      "adult": "Adult"
+    }
+  },
+  {
+    "id": "verified",
+    "type": "inputselect",
+    "name": "Verified",
+    "value": "_",
+    "options": {
+      "_": "Any",
+      "on": "Verified Only"
+    }
+  },
+  {
+    "id": "sortdesc",
+    "type": "inputselect",
+    "name": "Sort Desc",
+    "value": "added",
+    "options": {
+      "added": "Date",
+      "seeds": "Seeders",
+      "peers": "Leechers",
+      "size": "Size",
+      "name": "Title"
+    }
+  }
+]

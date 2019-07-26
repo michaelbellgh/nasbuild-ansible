@@ -1,0 +1,15 @@
+[Unit]
+Description=Lidarr Daemon
+After=network.target
+
+[Service]
+User=media
+Group=media
+Type=simple
+Environment="MONO_TLS_PROVIDER=btls"
+ExecStart=/usr/bin/mono /opt/Lidarr/Lidarr.exe -nobrowser
+TimeoutStopSec=20
+KillMode=process
+Restart=on-failure
+[Install]
+WantedBy=multi-user.target

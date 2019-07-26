@@ -1,0 +1,26 @@
+[
+  {
+    "id": "sitelink",
+    "type": "inputstring",
+    "name": "Site Link",
+    "value": "https://ilcorsaronero.pizza/"
+  },
+  {
+    "id": "cookieheader",
+    "type": "hiddendata",
+    "name": "CookieHeader",
+    "value": "__cfduid=d8446418f130975d11535b1477520a9591558249776"
+  },
+  {
+    "id": "lasterror",
+    "type": "hiddendata",
+    "name": "LastError",
+    "value": ""
+  },
+  {
+    "id": "adddownloadlinksviaitorrents.org",
+    "type": "inputbool",
+    "name": "Add download links via itorrents.org",
+    "value": false
+  }
+]
