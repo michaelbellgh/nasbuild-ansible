@@ -30,8 +30,7 @@ def get_integer(prompt, min, max):
     return output
 
 
-vars['options']['build_vm'] = get_boolean("Build VM?")
-vars['options']['force_rebuild_vm'] = get_boolean("Force VM Rebuild? (Deletes existing VM " + vars['vminfo']['vm_id'] + ")")
+vars['options']['delete_existing'] = get_boolean("Rebuild VM?")
 vars['options']['validate_certs'] = get_boolean("Validate ESXi certs?")
 vars['options']['copy_iso'] = get_boolean("Copy ISO?")
 
@@ -53,11 +52,17 @@ vars['vminfo']['service_user'] = get_string("Service user account?")
 
 staging_networks_input = get_string("Initial staging networks? Comma separated list of VMWare port groups")
 staging_networks_list = [x.strip() for x in staging_networks_input.split(",")]
-vars['vminfo']['staging_networks'] = staging_networks_list
+results = []
+for x in staging_networks_list:
+    results.append({"name" : x})
+vars['vminfo']['staging_networks'] = results
 
 final_network_input = get_string("Final networks? Comma separated list of VMWare port groups")
 final_networks_list = [x.strip() for x in final_network_input.split(",")]
-vars['vminfo']['networks'] = final_networks_list
+results = []
+for x in final_networks_list:
+    results.append({"name" : x})
+vars['vminfo']['networks'] = results
 
 
 vars['creds']['guest_user'] = get_string("Guest OS username? Note: Must be already created during installation")

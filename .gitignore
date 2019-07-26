@@ -112,4 +112,4 @@ inventory/
 run_dennas.sh
 data/denmcs/world/
 keypairs/*.xml
-
+.vscode
