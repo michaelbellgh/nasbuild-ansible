@@ -1,6 +1,10 @@
 ---
  - name: Configuring nas (pre stage)
    gather_facts: false
+<<<<<<< HEAD
+=======
+   connection: local
+>>>>>>> 02492202b0995edf8b5838ebcbcb74932d408f71
    hosts: esxi
    tasks:    
 
@@ -50,10 +54,22 @@
         
  - name: Configure NAS (implementation stage)
    gather_facts: false
+<<<<<<< HEAD
    connection: local
    hosts: nas
    tasks:
 
+=======
+   hosts: nas
+   tasks:
+
+
+    - name: Load VM variables
+      include_vars:
+        file: ../data/nas/vars/vm.yml
+        name: vm_vars
+
+>>>>>>> 02492202b0995edf8b5838ebcbcb74932d408f71
     - name: Ignore host key on first run
       set_fact:
         ansible_ssh_extra_args: '-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no'
@@ -88,7 +104,10 @@
        - "update-ca-certificates"
     
     
+<<<<<<< HEAD
     
+=======
+>>>>>>> 02492202b0995edf8b5838ebcbcb74932d408f71
     - name: Add all apt keys (shell)
       shell: "{{ item }}"
       become: yes
@@ -110,7 +129,10 @@
       apt_repository:
         repo: ppa:transmissionbt/ppa
         state: present
+<<<<<<< HEAD
         update_cache: no
+=======
+>>>>>>> 02492202b0995edf8b5838ebcbcb74932d408f71
       become: yes
     
     #Sets IPv4 preference for DNS, extended sockets for Transmission
@@ -128,6 +150,17 @@
       hostname:
         name: "{{ vm_vars.vminfo.hostname }}"
         
+<<<<<<< HEAD
+=======
+    - name: add myself to /etc/hosts
+      lineinfile:
+        dest: /etc/hosts
+        regexp: '^127\.0\.0\.1[ \t]+localhost'
+        line: "127.0.0.1 localhost {{ vm_vars.vminfo.hostname }}"
+        state: present
+      become: yes
+        
+>>>>>>> 02492202b0995edf8b5838ebcbcb74932d408f71
     # Customise items with your own mountpoints
     - name: Make storage drives mountpoints
       file:
@@ -225,8 +258,12 @@
       ignore_errors: yes
       
     - name: Stop transmission (holds lock on config)
+<<<<<<< HEAD
       systemd:
         daemon_reload: yes
+=======
+      service:
+>>>>>>> 02492202b0995edf8b5838ebcbcb74932d408f71
         name: transmission-daemon
         state: stopped
       become: yes   
@@ -261,7 +298,10 @@
        - { url: "https://github.com/Jackett/Jackett/releases/download/v0.11.387/Jackett.Binaries.LinuxAMDx64.tar.gz", dest: "/tmp/Jackett.Binaries.LinuxAMDx64.tar.gz" }
        - { url: "https://github.com/linuxserver/Heimdall/archive/2.1.13.zip", dest: "/tmp/heimdall.zip" }
        - { url: "https://github.com/lidarr/Lidarr/releases/download/v0.5.0.583/Lidarr.develop.0.5.0.583.linux.tar.gz", dest: "/tmp/Lidarr.tar.gz" }
+<<<<<<< HEAD
        - { url: "https://github.com/Radarr/Radarr/releases/download/v0.2.0.1358/Radarr.develop.0.2.0.1358.linux.tar.gz", dest: "/tmp/Radarr.tar.gz" }
+=======
+>>>>>>> 02492202b0995edf8b5838ebcbcb74932d408f71
       
       
     - name: Check if CouchPotato exists
@@ -341,6 +381,7 @@
         dest: "/opt/"
         remote_src: yes
       become: yes
+<<<<<<< HEAD
 
     - name: Unarchive Radarr
       unarchive:
@@ -348,6 +389,8 @@
         dest: "/opt/"
         remote_src: yes
       become: yes
+=======
+>>>>>>> 02492202b0995edf8b5838ebcbcb74932d408f71
       
     - name: Enable Apache2 modules
       apache2_module:
@@ -371,6 +414,7 @@
        - { src: "../data/nas/services/couchpotato.service", dest: "/etc/systemd/system/couchpotato.service" }
        - { src: "../data/nas/services/transmission-daemon.service", dest: "/lib/systemd/system/transmission-daemon.service" }
        - { src: "../data/nas/services/lidarr.service", dest: "/lib/systemd/system/lidarr.service" }
+<<<<<<< HEAD
        - { src: "../data/nas/services/radarr.service", dest: "/lib/systemd/system/radarr.service" }
             
       
@@ -381,6 +425,11 @@
       become: yes
       with_items:
        - "systemd-resolved"
+=======
+            
+    
+
+>>>>>>> 02492202b0995edf8b5838ebcbcb74932d408f71
        
     - name: Enable services
       service:
@@ -397,7 +446,10 @@
        - "minidlna"
        - "smbd"
        - "lidarr"
+<<<<<<< HEAD
        - "radarr"
+=======
+>>>>>>> 02492202b0995edf8b5838ebcbcb74932d408f71
 
        
     - name: Create post install folders
@@ -431,7 +483,10 @@
        - { src: "../data/nas/jackett/keypairs", dest: "/home/{{ vm_vars.vminfo.service_user }}/.config/.mono/" }
        - { src: "../data/nas/jackett/Jackett", dest: "/home/{{ vm_vars.vminfo.service_user }}/.config/" }
        - { src: "../data/nas/lidarr/Lidarr", dest: "/home/{{ vm_vars.vminfo.service_user }}/.config/" }
+<<<<<<< HEAD
        - { src: "../data/nas/radarr/Radarr", dest: "/home/{{ vm_vars.vminfo.service_user }}/.config/" }
+=======
+>>>>>>> 02492202b0995edf8b5838ebcbcb74932d408f71
        - { src: "../data/nas/100-static.yaml", dest: "/etc/netplan/100-static.yaml" }
        
        
@@ -462,7 +517,10 @@
        - { path: "/home/{{ vm_vars.vminfo.service_user }}/.config/.mono/keypairs", owner: "{{ vm_vars.vminfo.service_user }}", group: "{{ vm_vars.vminfo.service_user }}", state: "directory", mode: "0700", recurse: "yes" }
        - { path: "/home/{{ vm_vars.vminfo.service_user }}/.config/Jackett", owner: "{{ vm_vars.vminfo.service_user }}", group: "{{ vm_vars.vminfo.service_user }}", state: "directory", mode: "0755", recurse: "yes" }
        - { path: "/home/{{ vm_vars.vminfo.service_user }}/.config/Lidarr", owner: "{{ vm_vars.vminfo.service_user }}", group: "{{ vm_vars.vminfo.service_user }}", state: "directory", mode: "0755", recurse: "yes" }
+<<<<<<< HEAD
        - { path: "/home/{{ vm_vars.vminfo.service_user }}/.config/Radarr", owner: "{{ vm_vars.vminfo.service_user }}", group: "{{ vm_vars.vminfo.service_user }}", state: "directory", mode: "0755", recurse: "yes" }
+=======
+>>>>>>> 02492202b0995edf8b5838ebcbcb74932d408f71
 
        
        

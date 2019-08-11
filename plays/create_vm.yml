@@ -66,10 +66,17 @@
         username: "{{ username }}"
         password: "{{ password }}"
         datacenter: ha-datacenter
+<<<<<<< HEAD
         datastore: "{{ nas_vm.paths.target_datastore }}"
         path: "{{ nas_vm.paths.target_iso_filepath }}"
         src: "{{ nas_vm.paths.src_iso }}"
         validate_certs: "{{ nas_vm.options.validate_certs }}"  
+=======
+        datastore: "{{ vm_vars.paths.target_datastore }}"
+        path: "{{ vm_vars.paths.target_iso_filepath }}"
+        src: "{{ vm_vars.paths.src_iso }}"
+        validate_certs: "{{ vm_vars.options.validate_certs }}"  
+>>>>>>> 02492202b0995edf8b5838ebcbcb74932d408f71
       when: "vm_vars.options.copy_iso"
 
 
@@ -122,4 +129,8 @@
       delay: 60
       vars:
         query: "[?guest_name=='{{ vm_vars.vminfo.vm_id }}'].ip_address"
+<<<<<<< HEAD
       
+=======
+      
+>>>>>>> 02492202b0995edf8b5838ebcbcb74932d408f71
