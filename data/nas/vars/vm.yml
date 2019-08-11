@@ -1,0 +1,33 @@
+options:
+  delete_existing: no
+  validate_certs: no
+  copy_iso: no
+
+
+paths:
+  src_iso: ../data/nas/ubuntu64.iso
+  target_datastore: VMS
+  target_folder: /
+  target_iso_filepath: ubuntu64.iso
+
+vminfo:
+  vm_id: NAS
+  guest_id: ubuntu64guest
+  hostname: NAS
+  service_user: media
+  domain: mynetwork.net
+  dns_suffix: mynetwork.net
+  disk_size_gb: 100
+  memory_mb: 8192
+  num_cpus: 1
+  cores_per_cpu: 1
+  staging_networks: 
+    - name: Staging
+  networks:
+    - name: Trust
+    - name: DMZ
+
+
+creds:
+  guest_user: admin
+  guest_pass: admin_pass
