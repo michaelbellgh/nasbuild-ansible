@@ -5,15 +5,15 @@ network:
     ens192:
       dhcp4: no
       dhcp6: no
-      addresses: [192.168.1.50/24,]
+      addresses: [ip/mask,]
       nameservers:
-        search: [mynetwork.net]
-        addresses: [8.8.8.8, 1.1.1.1]      
+        search: [domain]
+        addresses: [nameservers]      
     ens224:
       dhcp4: no
       dhcp6: no
-      addresses: [192.168.2.50/24,]
-      gateway4: 192.168.2.254
+      addresses: [ip/mask,]
+      gateway4: gatewayIP
       nameservers:
-        search: [mynetwork.net]
-        addresses: [8.8.8.8, 1.1.1.1]
+        search: [domain]
+        addresses: [nameservers]

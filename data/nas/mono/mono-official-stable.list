@@ -1,5 +1,1 @@
-<<<<<<< HEAD
 deb https://download.mono-project.com/repo/ubuntu stable-bionic main
-=======
-deb https://download.mono-project.com/repo/ubuntu stable-bionic main [trusted=yes]
->>>>>>> 02492202b0995edf8b5838ebcbcb74932d408f71

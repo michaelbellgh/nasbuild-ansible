@@ -1,1 +1,1 @@
-deb http://apt.sonarr.tv/ master main
+deb https://apt.sonarr.tv/ubuntu bionic main

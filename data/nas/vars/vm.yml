@@ -1,64 +1,25 @@
-<<<<<<< HEAD
-options:
-  delete_existing: no
-  validate_certs: no
-  copy_iso: no
-
-
-paths:
-  src_iso: ../data/nas/ubuntu64.iso
-  target_datastore: VMS
-  target_folder: /
-  target_iso_filepath: ubuntu64.iso
-
-vminfo:
-  vm_id: NAS
-  guest_id: ubuntu64guest
-  hostname: NAS
-  service_user: media
-  domain: mynetwork.net
-  dns_suffix: mynetwork.net
-  disk_size_gb: 100
-  memory_mb: 8192
-  num_cpus: 1
-  cores_per_cpu: 1
-  staging_networks: 
-    - name: Staging
-  networks:
-    - name: Trust
-    - name: DMZ
-
-
-creds:
-  guest_user: admin
-  guest_pass: admin_pass
-=======
-creds:
-  guest_pass: admin
-  guest_user: admin
-options:
-  copy_iso: false
-  delete_existing: true
-  validate_certs: false
-paths:
-  src_iso: ../data/nas/ubuntu64.iso
-  target_datastore: VMS
-  target_folder: /
-  target_iso_filepath: ubuntu64.iso
+creds: {guest_pass: password, guest_user: guest}
+options: {copy_iso: false, delete_existing: true, validate_certs: false}
+paths: {src_iso: ../../nas/ubuntu64.iso, target_datastore: VMS,
+  target_folder: /, target_iso_filepath: ubuntu64.iso}
 vminfo:
   cores_per_cpu: '4'
   disk_size_gb: '100'
-  dns_suffix: mynetwork.net
-  domain: mynetwork.net
+  dns_suffix: .local
+  domain: .local
   guest_id: ubuntu64guest
-  hostname: NAS
+  hostname: my_nas_host
   memory_mb: '8192'
+  additional_drives:
+   - { device: "/dev/sdb1", mountpoint: "/mnt/Storage", fstype: ext4 }
+   - { device: "/dev/sdc1", mountpoint: "/mnt/NAS", fstype: ext4 }
+  post_build_permissions:
+   - { path: "/tmp/somedir", group: "media", owner: "media", mode: "0777" }
   networks:
-  - name: Trust
-  - name: DMZ
-  num_cpus: '1'
+  - {name: Trust}
+  - {name: DMZ}
+  num_cpus: '4'
   service_user: media
   staging_networks:
-  - name: Staging
-  vm_id: NAS
->>>>>>> 02492202b0995edf8b5838ebcbcb74932d408f71
+  - {name: Staging}
+  vm_id: my_nas_host

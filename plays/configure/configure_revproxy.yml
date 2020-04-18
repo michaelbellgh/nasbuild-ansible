@@ -1,0 +1,123 @@
+---
+
+ - name: Configure revproxy
+   gather_facts: false
+   hosts: esxi
+   tasks:
+
+    - name: Load VM variables
+      include_vars:
+        file: ../../data/revproxy/vars/revproxy.yml
+        name: vm_vars
+    
+    
+    - name: Get VM fact
+      vmware_vm_facts:
+        hostname: "{{ hostname }}"
+        username: "{{ username }}"
+        password: "{{ password }}"
+        validate_certs: "{{ vm_vars.options.validate_certs }}"      
+      delegate_to: localhost
+      register: vmfacts
+      until: '{{ vmfacts.virtual_machines | json_query(query) != "" }}'
+      retries: 30
+      vars:
+        query: "[?guest_name=='{{ vm_vars.vminfo.vm_id }}'].ip_address" 
+      delay: 60
+
+    - name: Register VM Object (2.7)
+      set_fact:
+        vm_obj: vmfacts.virtual_machines[vm_vars.vminfo.vm_id]
+      when: ansible_version.full < '2.8.1'
+
+    - name: Register VM Object (2.8)
+      set_fact:
+        vm_obj: '{{ vmfacts.virtual_machines | json_query(query) }}'
+      when: ansible_version.full >= '2.8.1'
+      vars:
+        query: "[?guest_name=='{{ vm_vars.vminfo.vm_id }}']"
+
+      
+    - name: Add hosts
+      add_host:
+        name: "{{ vm_obj[0].ip_address }}"
+        ansible_ssh_user: "{{ vm_vars.creds.guest_user }}"
+        password: "{{ vm_vars.creds.guest_pass }}"
+        ansible_ssh_pass: "{{ vm_vars.creds.guest_pass }}"
+        ansible_become: yes
+        ansible_become_user: root
+        ansible_become_method: su
+        ansible_sudo_pass: "{{ vm_vars.creds.guest_pass }}"
+        ansible_become_pass: "{{ vm_vars.creds.guest_pass }}"
+        guest_user: "{{ vm_vars.creds.guest_user }}"
+        guest_pass: "{{ vm_vars.creds.guest_pass }}"
+        groups: revproxy
+        
+ - name: Configure NAS (implementation stage)
+   gather_facts: false
+   hosts: revproxy
+   become: yes
+   tasks:
+
+    - name: Ignore host key on first run
+      set_fact:
+        ansible_ssh_extra_args: '-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no'
+    - name: Debug
+      shell: echo whoami
+          
+    - name: Copy all required pre install files
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        force: yes
+      become: yes
+      with_items:
+       - { src: "../../data/revproxy/ssl/rootca.crt", dest: "/usr/local/share/ca-certificates/" }
+       - { src: "../../data/revproxy/ssl/userca.crt", dest: "/usr/local/share/ca-certificates/" }
+       - { src: "../../data/revproxy/ssl/intermediate.crt", dest: "/usr/local/share/ca-certificates/" }
+
+    - name: Install additional packages
+      apt:
+        update_cache: yes
+        name:
+        - ca-certificates
+        - certbot
+        - apache2
+        - python-certbot-apache
+        - openvpn
+        - unzip
+        
+        
+        state: present
+      become: yes
+      ignore_errors: yes
+    
+
+    - name: Update certs and enable apache modules
+      command: "{{ item }}"
+      become: yes
+      with_items:
+       - "/usr/sbin/update-ca-certificates"
+       - "/usr/sbin/a2enmod ssl proxy"
+       
+    - name: Copy all required SSL files
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        force: yes
+      become: yes
+      with_items:
+       - { src: "../../data/revproxy/ssl/rootca.crt", dest: "/var/www/ca.crt" }
+
+       
+    - name: Copy apache configs
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"    
+      become: yes
+      with_items:
+       - { src: "../../data/revproxy/apache2/000-default.conf", dest: "/etc/apache2/sites-enabled/000-default.conf" }
+       - { src: "../../data/revproxy/apache2/000-default-le-ssl.conf", dest: "/etc/apache2/sites-enabled/000-default-le-ssl.conf" }
+    
+    - name: Reboot
+      reboot:
